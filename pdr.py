@@ -118,6 +118,12 @@ class PDR(object):
             return True
         return False
 
+def model_hash(m):
+    fields = []
+    for k in m:
+        fields.append((str(k[0]), m[k[0]]))
+    return hash(tuple(sorted(fields, key=lambda x: x[0])))
+
 class StateGenerator(object):
     """ Generate all states of a given transition system (reachable and/or unreachable)."""
     
@@ -211,21 +217,29 @@ class StateGenerator(object):
         print("INIT MODELS:")
         for m in init_models:
             print(m)
-            print(m[self.system.variables[0]])
-            print(m[self.system.variables[2]])
+            print(type(m))
+            # print(hash(m))
+            # print(m[self.system.variables[0]])
+            # print(m[self.system.variables[2]])
 
-        models_reachable = init_models
-        frontier = []
-        frontier += models_reachable
+        reachable_model_hashes = []
+        reachable_models = []
+        frontier = list(init_models)
 
         # Generate states reachable from init.
         while len(frontier) > 0:
+            print("Frontier size:", len(frontier))
+
             m = frontier.pop()
+            print(m)
+            print("reachable:", reachable_model_hashes)
 
-            if m in models_reachable:
+            if model_hash(m) in reachable_model_hashes:
                 continue
-
-            models_reachable.append(res[0])
+            
+            # Mark as reachable.
+            reachable_model_hashes.append(model_hash(m))
+            reachable_models.append(m)
 
             print("CURR:")
             print(m)
@@ -237,8 +251,8 @@ class StateGenerator(object):
             res = self.solve_enumerate(And(curr_state_formula, self.system.trans))
             print("TRANS MODELS:")
             for r in res:
-                print(r)
-                print("__")
+                # print(r)
+                # print("__")
                 partial = []
                 for a in r:
                     if is_next_var_name(str(a[0])):
@@ -254,6 +268,13 @@ class StateGenerator(object):
                 frontier.append(res[0])
             # print(self.solver.get_model())
 
+        print("INIT MODELS:")
+        for m in init_models:
+            print(m)
+
+        for m in reachable_models:
+            print("MODEL:")
+            print(m)
 
         # print("vars:", self.system.variables)
         # for v in self.system.variables:
