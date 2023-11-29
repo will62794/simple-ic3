@@ -6,7 +6,7 @@ from pdr import *
 # Run PDR property checking.
 P0 = props[0]
 pdr = PDR(system)
-# pdr.check_property(P0)
+pdr.check_property(P0)
 # for i,f in enumerate(pdr.frame_history):
 #     print(i,f)
 # for prop in props:
@@ -49,9 +49,15 @@ def state_labeler(skey, sval):
     # return [str((k,str(sval[k]))) for k in sval]
 
 
-gen = StateGenerator(system)
 # G = gen.state_graph(state_styler, state_labeler)
-G = gen.reachable(state_styler, state_labeler)
+
+print("================")
+print("================")
+print("Generating all reachable states explicitly.")
+gen = StateGenerator(system)
+# G = gen.reachable(state_styler, state_labeler)
+
+
 # G.render("state-graphs/state-graph")
 
 # bmcind = BMCInduction(example[0])

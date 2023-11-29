@@ -54,7 +54,8 @@ class TransitionSystem(object):
 class PDR(object):
     def __init__(self, system):
         self.system = system
-        self.frames = [system.init]
+        # Store frames as a list (conjunction) of clauses.
+        self.frames = [[system.init]]
         self.frame_history = []
         self.solver = Solver()
         self.prime_map = dict([(v, next_var(v)) for v in self.system.variables])
@@ -64,31 +65,55 @@ class PDR(object):
         print("Checking property %s..." % prop)
 
         while True:
+            print(" [PDR] Checking for bad state in blocking phase...")
             cube = self.get_bad_state(prop)
             if cube is not None:
-                print("bad cube:", cube)
+                print(" [PDR] bad cube:", cube)
                 # Blocking phase of a bad state
                 if self.recursive_block(cube):
                     print("--> Bug found at step %d" % (len(self.frames)))
                     break
                 else:
-                    print("   [PDR] Cube blocked '%s'" % str(cube))
+                    print(" [PDR] Cube blocked '%s'" % str(cube))
             else:
+                print("*** No bad cube found. entering PROPAGATION phase. ***")
                 # Checking if the last two frames are equivalent i.e., are inductive
                 if self.inductive():
+                    print("last two frames are equivalent")
                     print("--> The system is safe!")
                     break
                 else:
-                    print("   [PDR] Adding frame %d..." % (len(self.frames)))
+                    # if(len(self.frames) > 3):
+                        # return
+                    print(" [PDR] Adding frame %d..." % (len(self.frames)))
                     # print(self.frames[-1])
                     self.frame_history.append(self.frames[-1])
-                    self.frames.append(TRUE())
+                    self.frames.append([TRUE()])
                     # self.frames.append(prop)
+
+                    print(" [PDR] Propagating clauses...")
+                    # Propagate clauses forward for all frames after adding new frame.
+                    for i in range(len(self.frames)-1):
+                        # We propagate a clause from an earlier frame to a later frame.
+                        for c in self.frames[i]:
+                            # if is_sat(F[i] /\ c /\ T /\ ~c')
+                            # then add clause c to F[i+1]
+                            # In other words, if c is inductive at frame i, then propagate it to frame i+1.
+                            cprime = c.substitute(self.prime_map)
+                            print("clause:", c)
+                            print("clause:", cprime)
+                            frame_i_f = And(self.frames[i])
+                            ret = self.solve(And(frame_i_f, c, self.system.trans, Not(cprime)))
+                            if ret is None:
+                                print(" [PDR] Propagating clause '%s' from frame %d to frame %d" % (str(c), i, i+1))
+                                self.frames[i+1] = self.frames[i+1] + [c]
 
     def get_bad_state(self, prop):
         """Extracts a reachable state that intersects the negation
         of the property and the last current frame"""
-        return self.solve(And(self.frames[-1], Not(prop)))
+        last_frame_f = And(self.frames[-1])
+        print("last_frame_f:", last_frame_f)
+        return self.solve(And(last_frame_f, Not(prop)))
 
     def solve(self, formula):
         """Provides a satisfiable assignment to the state variables that are consistent with the input formula"""
@@ -102,19 +127,24 @@ class PDR(object):
         Returns True if the cube cannot be blocked.
         """
         for i in range(len(self.frames)-1, 0, -1):
+            # Replace each current state variable with its primed version in the current cube.
+            # This allows us to then do a 1-step backwards reachability check using the transition relation.
+            print("    [recursive_block] checking 1-step preimage of bad cube.")
             cubeprime = cube.substitute(dict([(v, next_var(v)) for v in self.system.variables]))
-            cubepre = self.solve(And(self.frames[i-1], self.system.trans, Not(cube), cubeprime))
+            # The 1-step backwards reachability check from the current bad state/cube.
+            cubepre = self.solve(And(And(self.frames[i-1]), self.system.trans, Not(cube), cubeprime))
+            print("    [recursive_block] cubepre:", cubepre)
             if cubepre is None:
+                print("    [recursive_block] no preimage of bad cube found. Blocking cube automatically from all prior frames.")
                 for j in range(1, i+1):
-                    self.frames[j] = And(self.frames[j], Not(cube))
+                    self.frames[j] = self.frames[j] + [Not(cube)]
                 return False
             cube = cubepre
         return True
 
     def inductive(self):
         """Checks if last two frames are equivalent """
-        if len(self.frames) > 1 and \
-           self.solve(Not(EqualsOrIff(self.frames[-1], self.frames[-2]))) is None:
+        if len(self.frames) > 1 and self.solve(Not(EqualsOrIff(And(self.frames[-1]), And(self.frames[-2])))) is None:
             return True
         return False
 
@@ -231,8 +261,8 @@ class StateGenerator(object):
             print("Frontier size:", len(frontier))
 
             m = frontier.pop()
-            print(m)
-            print("reachable:", reachable_model_hashes)
+            # print(m)
+            # print("reachable:", reachable_model_hashes)
 
             if model_hash(m) in reachable_model_hashes:
                 continue
@@ -241,8 +271,8 @@ class StateGenerator(object):
             reachable_model_hashes.append(model_hash(m))
             reachable_models.append(m)
 
-            print("CURR:")
-            print(m)
+            # print("CURR:")
+            # print(m)
             curr_state_formula = And([EqualsOrIff(k[0], k[1]) for k in m])
             # print("currf:", curr_state_formula)
             # res = self.solve_enumerate(And([curr_state_model, self.system.trans]))
@@ -256,25 +286,27 @@ class StateGenerator(object):
                 partial = []
                 for a in r:
                     if is_next_var_name(str(a[0])):
-                        print(a[0], a[1])
+                        # print(a[0], a[1])
                         # print(a[0].substitute({self.system.variables[0]: self.system.variables[0]}))
-                        print(str(a[0]).replace("_NEXT", ""), a[1])
-                        print("____")
+                        # print(str(a[0]).replace("_NEXT", ""), a[1])
+                        # print("____")
                         partial.append(EqualsOrIff(Symbol(str(a[0]).replace("_NEXT", ""), a[0].symbol_type()), a[1]))
                 newm = And(partial)
-                print("newm:", newm)
+                # print("newm:", newm)
                 res = self.solve_enumerate(newm)
-                print(res[0])
                 frontier.append(res[0])
             # print(self.solver.get_model())
 
-        print("INIT MODELS:")
-        for m in init_models:
-            print(m)
+        # print("INIT MODELS:")
+        # for m in init_models:
+        #     print(m)
 
-        for m in reachable_models:
-            print("MODEL:")
-            print(m)
+        # for m in reachable_models:
+        #     print("MODEL:")
+        #     print(m)
+
+        print("Total number of reachable models:", len(reachable_models))
+        
 
         # print("vars:", self.system.variables)
         # for v in self.system.variables:
@@ -393,7 +425,7 @@ def lock_server():
     """
     from pysmt.typing import BVType
 
-    nclients = 1
+    nclients = 2
     nservers = 2
     def semaphore_var(p):
         return Symbol(p + "_semaphore", BOOL)
