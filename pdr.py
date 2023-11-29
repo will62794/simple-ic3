@@ -81,6 +81,8 @@ class PDR(object):
                 if self.inductive():
                     print("last two frames are equivalent")
                     print("--> The system is safe!")
+                    print("inductive certificate:")
+                    print(self.frames[-1])
                     break
                 else:
                     # if(len(self.frames) > 3):
@@ -96,17 +98,26 @@ class PDR(object):
                     for i in range(len(self.frames)-1):
                         # We propagate a clause from an earlier frame to a later frame.
                         for c in self.frames[i]:
+                            # Don't propagate trivial clauses.
+                            if c == TRUE():
+                                continue
                             # if is_sat(F[i] /\ c /\ T /\ ~c')
                             # then add clause c to F[i+1]
                             # In other words, if c is inductive at frame i, then propagate it to frame i+1.
                             cprime = c.substitute(self.prime_map)
-                            print("clause:", c)
-                            print("clause:", cprime)
+                            # print("clause:", c)
+                            # print("clause:", cprime)
                             frame_i_f = And(self.frames[i])
                             ret = self.solve(And(frame_i_f, c, self.system.trans, Not(cprime)))
                             if ret is None:
                                 print(" [PDR] Propagating clause '%s' from frame %d to frame %d" % (str(c), i, i+1))
                                 self.frames[i+1] = self.frames[i+1] + [c]
+                    print(" [PDR] End propagation of clauses.")
+                    for i in range(len(self.frames)):
+                        print(" [PDR] Frame %d, clauses:" % i)
+                        for c in self.frames[i]:
+                            print(" ", c)
+
 
     def get_bad_state(self, prop):
         """Extracts a reachable state that intersects the negation
@@ -423,10 +434,9 @@ def lock_server():
     invariant [unique] forall C1, C2 : client, S: server. link(C1, S) & link(C2, S) -> C1 = C2
     
     """
-    from pysmt.typing import BVType
 
     nclients = 2
-    nservers = 2
+    nservers = 1
     def semaphore_var(p):
         return Symbol(p + "_semaphore", BOOL)
     def link_var(c, s):
