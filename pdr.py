@@ -21,7 +21,7 @@
 #     FMCAD 2011
 #
 from pysmt.shortcuts import Symbol, Not, And, Or, Equals, EqualsOrIff, Implies, Bool
-from pysmt.shortcuts import is_sat, is_unsat, Solver, TRUE
+from pysmt.shortcuts import is_sat, is_unsat, Solver, TRUE, simplify
 from pysmt.typing import BOOL
 import graphviz
 import itertools
@@ -70,6 +70,7 @@ class PDR(object):
             if cube is not None:
                 print(" [PDR] bad cube:", cube)
                 # Blocking phase of a bad state
+                # Is clause inductive relative to frame F[i-1]?
                 if self.recursive_block(cube):
                     print("--> Bug found at step %d" % (len(self.frames)))
                     break
@@ -82,22 +83,28 @@ class PDR(object):
                     print("last two frames are equivalent")
                     print("--> The system is safe!")
                     print("inductive certificate:")
-                    print(self.frames[-1])
+                    # print(self.frames[-1])
+                    print(simplify(And(self.frames[-1])))
                     break
                 else:
                     # if(len(self.frames) > 3):
                         # return
                     print(" [PDR] Adding frame %d..." % (len(self.frames)))
                     # print(self.frames[-1])
-                    self.frame_history.append(self.frames[-1])
+                    # self.frame_history.append(self.frames[-1])
                     self.frames.append([TRUE()])
+                    print(f" [PDR] New frame, {len(self.frames)-1}, clauses: {self.frames[-1]}")
                     # self.frames.append(prop)
 
                     print(" [PDR] Propagating clauses...")
                     # Propagate clauses forward for all frames after adding new frame.
                     for i in range(len(self.frames)-1):
+                        print(f" [PDR] Propagating forward from frame {i}.")
+
                         # We propagate a clause from an earlier frame to a later frame.
-                        for c in self.frames[i]:
+                        num_clauses_propagated = 0
+                        frame_i_clauses = self.frames[i]
+                        for ci,c in enumerate(frame_i_clauses):
                             # Don't propagate trivial clauses.
                             if c == TRUE():
                                 continue
@@ -107,23 +114,40 @@ class PDR(object):
                             cprime = c.substitute(self.prime_map)
                             # print("clause:", c)
                             # print("clause:", cprime)
+                            
+                            # We know check if clause c at frame i is inductive relative to frame I, in which case
+                            # propagate it forward to the next frame.
                             frame_i_f = And(self.frames[i])
                             ret = self.solve(And(frame_i_f, c, self.system.trans, Not(cprime)))
                             if ret is None:
-                                print(" [PDR] Propagating clause '%s' from frame %d to frame %d" % (str(c), i, i+1))
+                                print(" [PDR] Propagating clause %d '%s' from frame %d to frame %d" % (ci, str(c), i, i+1))
                                 self.frames[i+1] = self.frames[i+1] + [c]
-                    print(" [PDR] End propagation of clauses.")
-                    for i in range(len(self.frames)):
-                        print(" [PDR] Frame %d, clauses:" % i)
-                        for c in self.frames[i]:
-                            print(" ", c)
+                                self.frames[i+1] = sorted(self.frames[i+1], key=lambda x: str(x))
+                                num_clauses_propagated += 1
+                            else:
+                                print(" [PDR] NOT Propagating clause %d '%s' from frame %d to frame %d" % (ci, str(c), i, i+1))
+
+                        # If we propagated all clauses forward, this must mean this frame is inductive so we are done.
+                        print(" [PDR] Propagated %d clauses." % num_clauses_propagated)
+                        if not self.solve(Not(EqualsOrIff(And(self.frames[i]), And(self.frames[i+1])))):
+                            print(" [PDR] Frame %d is inductive. The system is safe!" % i)
+                            for c in self.frames[i]:
+                                print("   ", c)
+                            print(" [PDR] End propagation of clauses.")
+                            for i in range(len(self.frames)):
+                                print(" [PDR] Frame %d, clauses:" % i)
+                                for c in self.frames[i]:
+                                    print(" ", c)
+                            return
 
 
     def get_bad_state(self, prop):
         """Extracts a reachable state that intersects the negation
         of the property and the last current frame"""
         last_frame_f = And(self.frames[-1])
-        print("last_frame_f:", last_frame_f)
+        print("  Last frame clauses:")
+        for c in self.frames[-1]:
+            print("  ", c)
         return self.solve(And(last_frame_f, Not(prop)))
 
     def solve(self, formula):
