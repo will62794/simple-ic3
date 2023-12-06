@@ -478,9 +478,15 @@ def lock_server():
     def connect(c, s):
         without_s = [x for x in server if x!=s]
         without_c_s = [(ca,sa) for (ca,sa) in itertools.product(client, server) if (ca,sa)!=(c,s)]
+        
         return semaphores[s] & next_var(links[(c,s)]) & Not(next_var(semaphores[s])) &\
             And([unchanged(semaphores[t]) for t in without_s]) &\
             And([unchanged(links[(cx,sx)]) for (cx,sx) in without_c_s])
+
+        # UNSAFE version.
+        # return next_var(links[(c,s)]) & Not(next_var(semaphores[s])) &\
+        #     And([unchanged(semaphores[t]) for t in without_s]) &\
+        #     And([unchanged(links[(cx,sx)]) for (cx,sx) in without_c_s])
 
     def disconnect(c, s):
         without_s = [x for x in server if x!=s]
