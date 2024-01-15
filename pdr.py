@@ -65,7 +65,7 @@ class PDR(object):
         print("Checking property %s..." % prop)
 
         while True:
-            print(" [PDR] Checking for bad state in blocking phase...")
+            print(" [PDR] Checking for bad state in BLOCKING phase...")
             cube = self.get_bad_state(prop)
             if cube is not None:
                 print(" [PDR] bad cube:", cube)
@@ -89,7 +89,7 @@ class PDR(object):
                 else:
                     # if(len(self.frames) > 3):
                         # return
-                    print(" [PDR] Adding frame %d..." % (len(self.frames)))
+                    print(" [PDR] -------------- Adding frame %d ----------------" % (len(self.frames)))
                     # print(self.frames[-1])
                     # self.frame_history.append(self.frames[-1])
                     self.frames.append([TRUE()])
@@ -128,7 +128,7 @@ class PDR(object):
                                 print(" [PDR] NOT Propagating clause %d '%s' from frame %d to frame %d" % (ci, str(c), i, i+1))
 
                         # If we propagated all clauses forward, this must mean this frame is inductive so we are done.
-                        print(" [PDR] Propagated %d clauses." % num_clauses_propagated)
+                        print(f" [PDR] Propagated {num_clauses_propagated} clauses from frame {i} to {i+1}.")
                         if not self.solve(Not(EqualsOrIff(And(self.frames[i]), And(self.frames[i+1])))):
                             print(" [PDR] Frame %d is inductive. The system is safe!" % i)
                             for c in self.frames[i]:

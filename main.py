@@ -62,6 +62,7 @@ def state_labeler(skey, sval):
 
 
 if __name__ == "__main__":
+    # (system, props) = lock_server(clients=2, servers=2)
     (system, props) = lock_server(clients=2, servers=1)
 
 
@@ -79,4 +80,4 @@ if __name__ == "__main__":
     G = sg.gen_reachable(TRUE(), state_styler, state_labeler)
     G.render("state-graphs/state-graph-full")
 
-    # run_pdr(system, props)
+    run_pdr(system, props)
