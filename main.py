@@ -1,17 +1,20 @@
 from pdr import *
+import pysmt
 
 # (system, props) = counter(4)
-(system, props) = lock_server()
 
-# Run PDR property checking.
-P0 = props[0]
-pdr = PDR(system)
-pdr.check_property(P0)
-# for i,f in enumerate(pdr.frame_history):
-#     print(i,f)
-# for prop in props:
-    # pdr.check_property(prop)
-    # print("")
+def run_pdr(system, props):
+
+    # Run PDR property checking.
+    P0 = props[0]
+    pdr = PDR(system)
+    pdr.check_property(P0)
+
+    # for i,f in enumerate(pdr.frame_history):
+    #     print(i,f)
+    # for prop in props:
+        # pdr.check_property(prop)
+        # print("")
 
 def sats_prop(s, P):
     """ Does given state 's' satisfy property 'P'."""
@@ -49,15 +52,6 @@ def state_labeler(skey, sval):
     # return [str((k,str(sval[k]))) for k in sval]
 
 
-# G = gen.state_graph(state_styler, state_labeler)
-
-print("================")
-print("================")
-print("Generating all reachable states explicitly.")
-gen = StateGenerator(system)
-# G = gen.reachable(state_styler, state_labeler)
-
-
 # G.render("state-graphs/state-graph")
 
 # bmcind = BMCInduction(example[0])
@@ -65,3 +59,24 @@ gen = StateGenerator(system)
 #     # bmcind.check_property(prop)
 #     pdr.check_property(prop)
 #     print("")
+
+
+if __name__ == "__main__":
+    (system, props) = lock_server(clients=2, servers=1)
+
+
+    # G = gen.state_graph(state_styler, state_labeler)
+
+    print("================")
+    print("================")
+
+    print("Generating all reachable states.")
+    sg = StateGenerator(system)
+    G = sg.gen_reachable(system.init, state_styler, state_labeler)
+    G.render("state-graphs/state-graph-reach")
+
+    print("Generating complete state graph.")
+    G = sg.gen_reachable(TRUE(), state_styler, state_labeler)
+    G.render("state-graphs/state-graph-full")
+
+    # run_pdr(system, props)

@@ -186,8 +186,10 @@ class PDR(object):
 def model_hash(m):
     fields = []
     for k in m:
-        fields.append((str(k[0]), m[k[0]]))
-    return hash(tuple(sorted(fields, key=lambda x: x[0])))
+        # fields.append((str(k[0]), m[k[0]]))
+        fields.append((str(k), m[k]))
+    model_kvs_sorted = tuple(sorted(fields, key=lambda x: x[0]))
+    return hash(model_kvs_sorted)
 
 class StateGenerator(object):
     """ Generate all states of a given transition system (reachable and/or unreachable)."""
@@ -196,23 +198,40 @@ class StateGenerator(object):
         self.system = system
         self.solver = Solver()
 
-    def solve_enumerate(self, formula):
+    def solve_enumerate(self, formula, all_vars=None):
         """ Enumerate all satisfying assignments for given formula. """
         my_solver = Solver()
         my_solver.add_assertion(formula)
         models = []
         while my_solver.solve():
             model = my_solver.get_model()
-            # print("LLLLL:", model)
+
+            if all_vars is None:
+                all_vars = []
+                for k in model:
+                    all_vars.append(k[0])
+
+            model_vals = model.get_values([v for v in (all_vars)], model_completion=True)
+            # print("model vals:", model_vals)
+            
+            # Add assertion to avoid generating this next state again.
+            trans_model_formula = [EqualsOrIff(v, model_vals[v]) for v in model_vals]
+            my_solver.add_assertion(Not(And(trans_model_formula)))
+            # print(trans_model_formula)
+
+            # print("VVVVV:")
+            # for v in vals:
+                # print("* ", v, vals[v])
             # for a in model:
             #     print("AAA", a[0])
             #     print("BBB", a[1])
-            partial_model = [EqualsOrIff(k[0], k[1]) for k in model]
-            # print("MODEL:")
-            # print(model)
+            # partial_model = [EqualsOrIff(k[0], k[1]) for k in model]
+            # print(self.system.variables[0])
+            # print(list(vals.keys())[0])
+            
             # print("--")
-            my_solver.add_assertion(Not(And(partial_model)))
-            models.append(model)
+            models.append(model_vals)
+        # print(len(models))
         return models
 
     def gen_transition(self):
@@ -234,68 +253,76 @@ class StateGenerator(object):
             # cube_preds.append(And(EqualsOrIff(v, vcurr), EqualsOrIff(next_var(v), vnext)))
         cube = And(cube_preds)
         return trans
-        
-    def gen_transitions(self):
-        all_trans = []
-        while True:
-            trans = self.gen_transition()
-            # No more transitions to find.
-            if not trans:
-                break
-            all_trans.append(trans)
-            # Block this transition from being found again.
-            block_preds = []
-            for v in self.system.variables:
-                block = And(EqualsOrIff(v, trans["curr"][v]), EqualsOrIff(next_var(v), trans["next"][v]))
-                block_preds.append(block)
-            
-            self.solver.add_assertion(Not(And(block_preds)))
-        return all_trans
-
-    def state_graph(self, styler, labeler):
-        G = graphviz.Digraph("state_graph")
-        all_trans = self.gen_transitions()
-        # Map from state's string representation to its structured 
-        # (pySMT based) representation.
-        all_states = {}
-        def state_str(s):
-            out = ""
-            vals = [str(s[v]) for v in self.system.variables]
-            return ",".join(vals)
-        for t in all_trans:
-            scurr = state_str(t["curr"])
-            snext = state_str(t["next"])
-            G.edge(scurr,snext)
-            all_states[scurr] = t["curr"]
-            all_states[snext] = t["next"]
-        # Add all states for styling.
-        for s in all_states:
-            sval = all_states[s]
-            G.node(s, label=labeler(s, sval), **styler(s, sval))
-        return G
     
-    def reachable(self, styler, labeler):
+    def state_str(self, s):
+        out = ""
+        vals = [str(v)+"="+str(s[v]) for v in self.system.variables]
+        return "\n".join(vals) 
+    
+    # def gen_transitions(self):
+    #     all_trans = []
+    #     while True:
+    #         trans = self.gen_transition()
+    #         # No more transitions to find.
+    #         if not trans:
+    #             break
+    #         all_trans.append(trans)
+    #         # Block this transition from being found again.
+    #         block_preds = []
+    #         for v in self.system.variables:
+    #             block = And(EqualsOrIff(v, trans["curr"][v]), EqualsOrIff(next_var(v), trans["next"][v]))
+    #             block_preds.append(block)
+            
+    #         self.solver.add_assertion(Not(And(block_preds)))
+    #     return all_trans
+
+    # def state_graph(self, styler, labeler):
+    #     G = graphviz.Digraph("state_graph")
+    #     all_trans = self.gen_transitions()
+    #     # Map from state's string representation to its structured 
+    #     # (pySMT based) representation.
+    #     all_states = {}
+  
+    #     for t in all_trans:
+    #         scurr = self.state_str(t["curr"])
+    #         snext = self.state_str(t["next"])
+    #         G.edge(scurr,snext)
+    #         all_states[scurr] = t["curr"]
+    #         all_states[snext] = t["next"]
+    #     # Add all states for styling.
+    #     for s in all_states:
+    #         sval = all_states[s]
+    #         G.node(s, label=labeler(s, sval), **styler(s, sval))
+    #     return G
+    
+    def gen_reachable(self, init, styler, labeler):
         # Generate initial states.
-        G = graphviz.Digraph("state_graph")
-        self.system.init
-        init_models = self.solve_enumerate(self.system.init)
+        G = graphviz.Digraph("state_graph", strict=True)
+        print("init formula:", init)
+        init_models = self.solve_enumerate(init, all_vars=self.system.variables)
         print("INIT MODELS:")
-        for m in init_models:
-            print(m)
-            print(type(m))
+        # for m in init_models:
+            # print(m, type(m))
             # print(hash(m))
             # print(m[self.system.variables[0]])
             # print(m[self.system.variables[2]])
 
+        # exit(0)
+
+        init_model_hashes = [model_hash(m) for m in init_models]
+        print("Num init states:", len(init_models))
         reachable_model_hashes = []
         reachable_models = []
+        edges = []
+        reachable_model_table = {}
         frontier = list(init_models)
 
         # Generate states reachable from init.
         while len(frontier) > 0:
-            print("Frontier size:", len(frontier))
+            # print("Frontier size:", len(frontier))
 
             m = frontier.pop()
+            reachable_model_table[model_hash(m)] = m
             # print(m)
             # print("reachable:", reachable_model_hashes)
 
@@ -308,28 +335,31 @@ class StateGenerator(object):
 
             # print("CURR:")
             # print(m)
-            curr_state_formula = And([EqualsOrIff(k[0], k[1]) for k in m])
+            # curr_state_formula = And([EqualsOrIff(k[0], k[1]) for k in m])
+            curr_state_formula = And([EqualsOrIff(k, m[k]) for k in m])
             # print("currf:", curr_state_formula)
             # res = self.solve_enumerate(And([curr_state_model, self.system.trans]))
             # print(self.system.trans)
             # res = self.solver.solve([self.system.trans])
-            res = self.solve_enumerate(And(curr_state_formula, self.system.trans))
-            print("TRANS MODELS:")
+            next_vars = [next_var(v) for v in self.system.variables]
+
+            res = self.solve_enumerate(And(curr_state_formula, self.system.trans), all_vars = self.system.variables + next_vars)
+            # print("TRANS MODELS:")
             for r in res:
                 # print(r)
                 # print("__")
                 partial = []
                 for a in r:
-                    if is_next_var_name(str(a[0])):
-                        # print(a[0], a[1])
-                        # print(a[0].substitute({self.system.variables[0]: self.system.variables[0]}))
-                        # print(str(a[0]).replace("_NEXT", ""), a[1])
-                        # print("____")
-                        partial.append(EqualsOrIff(Symbol(str(a[0]).replace("_NEXT", ""), a[0].symbol_type()), a[1]))
+                    # print("avar:", a)
+                    if is_next_var_name(str(a)):
+                        # print(r[a])
+                        partial.append(EqualsOrIff(Symbol(str(a).replace("_NEXT", ""), a.symbol_type()), r[a]))
                 newm = And(partial)
-                # print("newm:", newm)
                 res = self.solve_enumerate(newm)
                 frontier.append(res[0])
+                # if model_hash(res[0]) not in reachable_model_hashes:
+                edges.append((model_hash(m), model_hash(res[0])))
+
             # print(self.solver.get_model())
 
         # print("INIT MODELS:")
@@ -340,7 +370,30 @@ class StateGenerator(object):
         #     print("MODEL:")
         #     print(m)
 
-        print("Total number of reachable models:", len(reachable_models))
+
+        print("Total number of reachable states found:", len(reachable_models))
+        print("Total number of reachable edges found:", len(edges))
+        
+        # Build Graphviz DOT graph.
+        for e in edges:
+            G.edge(str(e[0]), str(e[1]))
+       
+        def state_labeler(skey, sval):
+            # print sval.keys()
+            out = "\n".join([str(k)+": "+str(sval[k]) for k in sval.keys()]) #+ "\n" + skey
+            return out.replace("semaphore", "sem")
+            # return [str((k,str(sval[k]))) for k in sval]
+        def state_styler(skey, sval):
+            return {"color": "red"}
+       
+        for h in reachable_model_hashes:
+            s = str(h)
+            sval = reachable_model_table[h]
+            sstr = self.state_str(sval)
+            # print(sstr)
+            color = "gray" if h in init_model_hashes else "white"
+            G.node(s, label=sstr, style="filled", fillcolor=color)
+        return G
         
 
         # print("vars:", self.system.variables)
@@ -432,7 +485,7 @@ class BMCInduction(object):
                 return
 
 
-def lock_server():
+def lock_server(clients=2, servers=1):
     """ Simpler lock server example based on Ivy example.
 
     type client
@@ -459,8 +512,8 @@ def lock_server():
     
     """
 
-    nclients = 2
-    nservers = 1
+    nclients = clients
+    nservers = servers
     def semaphore_var(p):
         return Symbol(p + "_semaphore", BOOL)
     def link_var(c, s):
