@@ -60,6 +60,43 @@ class PDR(object):
         self.solver = Solver()
         self.prime_map = dict([(v, next_var(v)) for v in self.system.variables])
 
+    def generalize_iter(self, clause, frame_i):
+        """Generalize the given clause by removing literals that are not inductive at frame_i"""
+        max_iter = 10
+        for i in range(max_iter):
+            # For each literal L in c, drop L from c and check if
+            pass
+
+    def recursive_block(self, cube):
+        """Blocks the cube at each frame, if possible.
+
+        Returns True if the cube cannot be blocked.
+        """
+        # Given a bad cube at frame i, meaning that this cube can reach a bad state in zero or more steps.
+        # We check if this cube is inductive relative to frame F[i-1]
+
+        for i in range(len(self.frames)-1, 0, -1):
+            # Replace each current state variable with its primed version in the current cube.
+            # This allows us to then do a 1-step backwards reachability check using the transition relation.
+            print("    [recursive_block] checking 1-step preimage of bad cube.")
+            cubeprime = cube.substitute(dict([(v, next_var(v)) for v in self.system.variables]))
+            # The 1-step backwards reachability check from the current bad state/cube.
+            cubepre = self.solve(And(And(self.frames[i-1]), self.system.trans, Not(cube), cubeprime))
+            print("    [recursive_block] cubepre:", cubepre)
+            if cubepre is None:
+                print("    [recursive_block] no preimage of bad cube found. Blocking cube automatically from all prior frames.")
+                for j in range(1, i+1):
+                    self.frames[j] = self.frames[j] + [Not(cube)]
+                return False
+            cube = cubepre
+        return True
+
+    def inductive(self):
+        """Checks if last two frames are equivalent """
+        if len(self.frames) > 1 and self.solve(Not(EqualsOrIff(And(self.frames[-1]), And(self.frames[-2])))) is None:
+            return True
+        return False
+
     def check_property(self, prop):
         """Property Directed Reachability approach without optimizations."""
         print("Checking property %s..." % prop)
@@ -155,33 +192,6 @@ class PDR(object):
         if self.solver.solve([formula]):
             return And([EqualsOrIff(v, self.solver.get_value(v)) for v in self.system.variables])
         return None
-
-    def recursive_block(self, cube):
-        """Blocks the cube at each frame, if possible.
-
-        Returns True if the cube cannot be blocked.
-        """
-        for i in range(len(self.frames)-1, 0, -1):
-            # Replace each current state variable with its primed version in the current cube.
-            # This allows us to then do a 1-step backwards reachability check using the transition relation.
-            print("    [recursive_block] checking 1-step preimage of bad cube.")
-            cubeprime = cube.substitute(dict([(v, next_var(v)) for v in self.system.variables]))
-            # The 1-step backwards reachability check from the current bad state/cube.
-            cubepre = self.solve(And(And(self.frames[i-1]), self.system.trans, Not(cube), cubeprime))
-            print("    [recursive_block] cubepre:", cubepre)
-            if cubepre is None:
-                print("    [recursive_block] no preimage of bad cube found. Blocking cube automatically from all prior frames.")
-                for j in range(1, i+1):
-                    self.frames[j] = self.frames[j] + [Not(cube)]
-                return False
-            cube = cubepre
-        return True
-
-    def inductive(self):
-        """Checks if last two frames are equivalent """
-        if len(self.frames) > 1 and self.solve(Not(EqualsOrIff(And(self.frames[-1]), And(self.frames[-2])))) is None:
-            return True
-        return False
 
 def model_hash(m):
     fields = []
